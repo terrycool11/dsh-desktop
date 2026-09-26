@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>DSH Desktop</title>
+<link rel="stylesheet" href="launcher.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="head">
+    <div class="logo"><img id="appLogo" alt=""></div>
+    <div class="titles">
+      <h1>DSH Desktop</h1>
+      <p id="subtitle">选择要进入的入口</p>
+    </div>
+    <button class="close" id="closeBtn" title="关闭" aria-label="关闭">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+    </button>
+  </header>
+
+  <main class="choices">
+
+    <button class="choice" id="pickHarness" data-key="1">
+      <span class="glow"></span>
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2.5" y="4" width="19" height="16" rx="3"></rect>
+          <path d="M7 9.5l3 2.5-3 2.5M12.5 15h4.5"></path>
+        </svg>
+      </span>
+      <span class="body">
+        <span class="name">DeepSeek Harness</span>
+        <span class="desc">会话 · 编码助手 · 项目工作区</span>
+        <span class="meta" id="harnessMeta">正在检查后台服务…</span>
+      </span>
+      <span class="key">1</span>
+    </button>
+
+    <button class="choice" id="pickPlatform" data-key="2">
+      <span class="glow"></span>
+      <span class="icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v18M7 8h7.5a2.5 2.5 0 010 5H8a2.5 2.5 0 000 5h9"></path>
+        </svg>
+      </span>
+      <span class="body">
+        <span class="name">DeepSeek 开放平台</span>
+        <span class="desc">余额 · 模型 · 对话测试</span>
+        <span class="meta" id="platformMeta">API 密钥检查中…</span>
+      </span>
+      <span class="key">2</span>
+    </button>
+
+  </main>
+
+  <footer class="foot">
+    <label class="remember">
+      <input type="checkbox" id="remember">
+      <span class="box"></span>
+      <span>记住选择，下次直接进入（可在菜单「文件 → 显示启动页」改回来）</span>
+    </label>
+    <div class="foot-right">
+      <span class="ver" id="version"></span>
+      <button class="quit" id="quitBtn">退出</button>
+    </div>
+  </footer>
+
+</div>
+<script src="launcher.js"></script>
+</body>
+</html>

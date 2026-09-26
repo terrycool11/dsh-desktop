@@ -1,0 +1,31 @@
+# ---- 打包产物 ----
+dist/
+dist-new/
+dist-old/
+dist-build/
+*.exe
+*.asar
+
+# ---- 依赖 ----
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+
+# ---- 本地产物 ----
+.preview/
+assets/generated/
+assets/*-source.jpg
+assets/icon-source.jpg
+
+# ---- 运行时 / 日志 ----
+*.log
+server-*.log
+launch-server-*
+probe.html
+selftest.html
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

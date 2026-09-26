@@ -1,0 +1,29 @@
+{
+  "name": "dsh-desktop",
+  "productName": "DSH Desktop",
+  "version": "1.4.1",
+  "private": true,
+  "description": "DeepSeek Harness 桌面客户端：把 dsh web 界面封装为独立桌面应用，内置开放平台面板与启动页",
+  "main": "main.js",
+  "author": "DSH Desktop",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "selftest": "electron . --self-test --self-test-platform",
+    "selftest:chat": "electron . --self-test --self-test-platform --self-test-chat",
+    "selftest:launcher": "electron . --self-test --self-test-launcher --self-test-platform",
+    "package": "node tools/package.js",
+    "package:staged": "node tools/package.js --out dist-new",
+    "update": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/update-app.ps1",
+    "update:entry": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/create-update-shortcut.ps1",
+    "web": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/start-web.ps1",
+    "verify": "node tools/verify-package.js",
+    "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/create-shortcut.ps1",
+    "icon": "node tools/make-icon.js",
+    "icon:image": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/prepare-icon.ps1 && node tools/make-icon.js"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^44.4.5"
+  }
+}
