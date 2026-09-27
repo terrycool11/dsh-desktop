@@ -41,9 +41,9 @@ async function main() {
     asar: true,
     ignore: [
       /^\/node_modules($|\/)/,
-      /^\/dist($|\/)/,
-      /^\/dist-build($|\/)/,
-      /^\/dist-new($|\/)/,
+      // 一个规则盖掉所有构建/备份目录：dist、dist-new、dist-old、dist-build…
+      // （曾经漏了 dist-old，结果把 377 MB 的旧版整包打进了 app.asar）
+      /^\/dist(-[a-z0-9]+)?($|\/)/,
       /^\/\.preview($|\/)/,
       /^\/tools($|\/)/,
       // 说明文档与素材原图只给仓库看，运行时用不到（docs 是 README 截图，chibi-source 是抠图原图）

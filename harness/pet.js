@@ -67,6 +67,22 @@
     mount: null,                    // 挂载容器，默认 document.body
     autoBubbleMs: 7000,             // 打开后自动冒泡时长
     refreshMs: 30000,               // 定时刷新数据的间隔
+
+    /* ---- 台词 ---- */
+    dragText: '主人要把我带去哪？',      // 拖动时显示，松手恢复原内容
+    clickTexts: [                       // 点击时轮着说，超过 clickResetMs 没说就恢复原内容
+      '主人主人，戳我做什么呀～',
+      '嘻，被主人抓到啦！',
+      '最喜欢主人了！',
+      '今天也要开开心心的哦～',
+      '要不要摸摸头？',
+      '主人辛苦啦，记得喝水～',
+      '唔…好痒，别戳啦～',
+      '我一直在这里陪着主人呢！'
+    ],
+    clickResetMs: 10000,            // 点完之后多久恢复原本的气泡内容
+    farewellText: '主人，下次再见吧！',  // 退出前说的话（宿主调 farewell()）
+
     provider: null,                 // async () => ({ ok, balance, currency, runSpent, daySpent })
     tokensSelector: '[data-composer-stats]',   // 从页面读取 token 用量的选择器
     labels: { balance: '余额', run: '本次消耗', tokens: 'Tokens' },
@@ -98,6 +114,10 @@
     var stats = null;
     var destroyed = false;
     var timers = [];
+    var sayOverride = null;        // 非 null 时气泡显示这句，而不是余额提示
+    var overrideTimer = null;
+    var dragging = false;
+    var lastClickIndex = -1;
 
     function money(v, cur) {
       if (v === null || v === undefined || isNaN(Number(v))) return '—';
@@ -207,21 +227,44 @@
     function onDown(e) {
       if (!o.draggable || e.button !== 0) return;
       var r = box.getBoundingClientRect();
-      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, moved: false };
+      drag = {
+        dx: e.clientX - r.left, dy: e.clientY - r.top,
+        startX: e.clientX, startY: e.clientY,
+        moved: false
+      };
       box.classList.add('dragging');
       e.preventDefault();
     }
     function onMove(e) {
       if (!drag) return;
-      drag.moved = true;
+      // 移动超过 4px 才算「拖动」，避免手抖把单击当成拖动
+      if (!drag.moved) {
+        if (Math.abs(e.clientX - drag.startX) + Math.abs(e.clientY - drag.startY) < 4) return;
+        drag.moved = true;
+        dragging = true;
+        setSay(o.dragText, 0);
+        show();
+      }
       applyPos(e.clientX - drag.dx, e.clientY - drag.dy);
     }
     function onUp() {
       if (!drag) return;
       box.classList.remove('dragging');
-      if (drag.moved) savePos();
-      else { hop(); refresh(true); }
+      var moved = drag.moved;
       drag = null;
+      if (moved) {
+        savePos();
+        dragging = false;
+        clearSay();            // 松手：气泡恢复原本内容（余额 / 消耗 / Tokens）
+        show(2400);
+      } else {
+        // 单击：换一句可爱的话，clickResetMs 内没再点就恢复原本内容
+        var line = pickClickText();
+        setSay(line, o.clickResetMs);
+        show();
+        hop();
+        refresh(false);
+      }
     }
     box.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
@@ -244,12 +287,39 @@
       bubble.classList.remove('show');
       clearTimeout(bubbleTimer);
     }
-    function say(text, ms) {
+
+    /* ---------- 气泡台词：临时喊话 / 恢复原内容 ---------- */
+    function setSay(text, ms) {
+      sayOverride = text;
       sayEl.textContent = text;
+      clearTimeout(overrideTimer);
+      overrideTimer = null;
+      if (ms) overrideTimer = setTimeout(clearSay, ms);
+    }
+    function clearSay() {
+      clearTimeout(overrideTimer);
+      overrideTimer = null;
+      sayOverride = null;
+      paint();
+    }
+    function pickClickText() {
+      var list = (o.clickTexts && o.clickTexts.length) ? o.clickTexts : DEFAULTS.clickTexts;
+      if (list.length === 1) return list[0];
+      var i = Math.floor(Math.random() * list.length);
+      if (i === lastClickIndex) i = (i + 1) % list.length;   // 不连着说同一句
+      lastClickIndex = i;
+      return list[i];
+    }
+
+    function say(text, ms) {
+      setSay(text, ms || 0);
       show(ms || 4000);
     }
+
     box.addEventListener('mouseenter', function () { show(); });
-    box.addEventListener('mouseleave', hide);
+    box.addEventListener('mouseleave', function () {
+      if (!dragging) hide();         // 拖动中别把气泡收掉
+    });
 
     /* ---------- 数据 ---------- */
     function reminder() {
@@ -270,7 +340,7 @@
       var t = readTokens();
       values.tokens.textContent = t || '—';
       values.tokens.title = t ? ('页面统计：' + t) : '暂无量数据';
-      sayEl.textContent = reminder();
+      if (sayOverride === null) sayEl.textContent = reminder();   // 有临时台词就别覆盖它
     }
 
     function refresh(withBubble) {
@@ -310,10 +380,21 @@
       show: show,
       hide: hide,
       hop: hop,
+      clearSay: clearSay,
+      /** 只把台词显示进气泡（不改数据、不自动消失） */
+      setLine: function (text, ms) { setSay(text, ms || 0); show(); return text; },
+      /** 退出前告别：气泡显示 farewellText（宿主调完停一下再退） */
+      farewell: function (text) {
+        var t = text || o.farewellText;
+        setSay(t, 0);
+        show();
+        return t;
+      },
       stats: function () { return stats; },
       destroy: function () {
         destroyed = true;
         timers.forEach(function (t) { clearTimeout(t); clearInterval(t); });
+        clearTimeout(overrideTimer);
         box.removeEventListener('mousedown', onDown);
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onUp);
@@ -325,5 +406,5 @@
     return api;
   }
 
-  return { create: create, DEFAULTS: DEFAULTS, version: '1.0.0' };
+  return { create: create, DEFAULTS: DEFAULTS, version: '1.1.0' };
 });

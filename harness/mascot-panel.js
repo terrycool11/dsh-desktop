@@ -41,6 +41,16 @@
   });
   window.__dshPet = pet;
 
+  // 给 main.js 的两个钩子：
+  //   __dshPetSay —— 只把台词显示进气泡
+  //   __dshPetFarewell —— 退出前告别（显示，并返回说了哪句）
+  window.__dshPetSay = function (text) {
+    try { pet.setLine(text, 0); pet.show(); return true; } catch (e) { return false; }
+  };
+  window.__dshPetFarewell = function (text) {
+    try { return pet.farewell(text); } catch (e) { return ''; }
+  };
+
   // 点一下：让主进程立刻重新采样一次余额，再刷新气泡（比等轮询快）
   wrap.addEventListener('click', function () {
     if (!window.dshSwitch || !window.dshSwitch.refreshStats) return;

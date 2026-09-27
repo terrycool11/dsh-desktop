@@ -856,6 +856,22 @@ function mascotDataUrl() {
   return mascotDataUrlCache;
 }
 
+/* ---------------- 桌宠告别（退出前） ---------------- */
+
+// 关窗口前让桌宠说句再见：气泡先显示这句话，停一下让人看见，然后才真的退。
+// 只显示、不出声 —— 试过用 Windows 自带的 SAPI 念出来，机器味太重，已去掉。
+async function sayGoodbye(win) {
+  const text = '主人，下次再见吧！';
+  try {
+    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+      await win.webContents.executeJavaScript(
+        'window.__dshPetSay ? window.__dshPetSay(' + JSON.stringify(text) + ') : false', true);
+    }
+  } catch (e) { /* 页面上没有桌宠就算了 */ }
+  await new Promise((r) => setTimeout(r, 1500));   // 让气泡停一下再消失
+  log('pet farewell done, quitting');
+}
+
 // 开放平台面板：独立窗口，沙箱 + contextIsolation，只通过 preload 的 IPC 通道
 function createPlatformWindow() {
   if (platformWindow && !platformWindow.isDestroyed()) return platformWindow;
@@ -1126,7 +1142,23 @@ function createMainWindow() {
     }
   });
 
-  mainWindow.on('close', () => {
+  // 关窗口时先让桌宠道别（气泡显示 + 读完那句话），再真的关。
+  // 只在第一次拦一下，second pass 直接走正常关闭流程。
+  let petFarewellDone = false;
+  mainWindow.on('close', (e) => {
+    const canSay = !petFarewellDone && mainWindow && !mainWindow.isDestroyed() &&
+      mainWindow.isVisible() && !mainWindow.webContents.isDestroyed();
+    if (canSay) {
+      petFarewellDone = true;
+      e.preventDefault();          // 先别关，让桌宠把话说完
+      saveBounds();
+      sayGoodbye(mainWindow).then(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+      }).catch(() => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+      });
+      return;
+    }
     saveBounds();
     setTimeout(() => handleWindowClosed('harness'), 50);
   });
@@ -1252,6 +1284,33 @@ function buildMenu() {
       ]
     },
     { label: '窗口', submenu: [{ role: 'minimize', label: '最小化' }, { role: 'close', label: '关闭窗口' }] },
+    {
+      label: '桌宠',
+      submenu: [
+        {
+          label: '回到默认位置',
+          click: () => {
+            if (!mainWindow || mainWindow.isDestroyed()) return;
+            mainWindow.webContents.executeJavaScript(
+              "try{localStorage.removeItem('dsh-pet-pos')}catch(e){};" +
+              "var p=document.querySelector('.dsh-pet');" +
+              "if(p){p.style.top='auto';p.style.left='10px';p.style.bottom='52px';}" +
+              "!!p", true).then((ok) => toastInfo(ok ? '桌宠已回到左下角' : '页面上没有桌宠'))
+              .catch(() => {});
+          }
+        },
+        {
+          label: '让它说句话（测试气泡）',
+          click: () => {
+            if (!mainWindow || mainWindow.isDestroyed()) return;
+            mainWindow.webContents.executeJavaScript(
+              "window.__dshPetSay ? window.__dshPetSay('主人，我一直在这里陪着你呢！') : false", true)
+              .then((ok) => toastInfo(ok ? '桌宠冒泡了' : '页面上没有桌宠'))
+              .catch(() => {});
+          }
+        }
+      ]
+    },
     {
       label: '帮助',
       submenu: [
