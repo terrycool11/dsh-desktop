@@ -35,6 +35,8 @@ const CONFIG_DEFAULTS = {
   // 默认 false：DSH 经常在跑长任务，关窗口不该把它掐掉；下次启动会直接复用（秒开）。
   // 想彻底停掉服务，用菜单「文件 → 退出并结束 DSH 服务」。
   killServerOnQuit: false,
+  // 桌宠要不要播语音（真人录音素材，放在 assets\voice）
+  petVoice: true,
   zoom: 1
 };
 
@@ -596,6 +598,8 @@ function registerPlatformIpc() {
   ipcMain.handle('stats:get', () => usageSnapshot());
   ipcMain.handle('stats:refresh', async () => { await sampleBalance(); return usageSnapshot(); });
   ipcMain.handle('mascot:data-url', () => mascotDataUrl());
+  // 桌宠的真人语音素材（拖动 / 点击 / 告别）
+  ipcMain.handle('pet:voice', () => voiceClips());
 }
 
 /* ---------------- 用量跟踪（余额 / 消耗） ---------------- */
@@ -858,17 +862,60 @@ function mascotDataUrl() {
 
 /* ---------------- 桌宠告别（退出前） ---------------- */
 
-// 关窗口前让桌宠说句再见：气泡先显示这句话，停一下让人看见，然后才真的退。
-// 只显示、不出声 —— 试过用 Windows 自带的 SAPI 念出来，机器味太重，已去掉。
+/* ---------------- 桌宠语音（真人录音素材） ---------------- */
+
+// assets\voice 里放着从语音包切出来的台词音频：
+//   drag.wav / click-1..8.wav / farewell.wav
+// 渲染进程是 http 页面、读不了 file://，所以主进程读成 data URL 传过去。
+// 素材缺失就返回 null —— 桌宠只显示文字不出声，不影响其它功能。
+const VOICE_DIR = path.join(__dirname, 'assets', 'voice');
+let voiceClipsCache = null;
+
+function readVoiceClip(name) {
+  for (const ext of ['.wav', '.mp3', '.ogg', '.m4a']) {
+    const p = path.join(VOICE_DIR, name + ext);
+    try {
+      if (!fs.existsSync(p)) continue;
+      const mime = ext === '.mp3' ? 'audio/mpeg' : ext === '.ogg' ? 'audio/ogg'
+        : ext === '.m4a' ? 'audio/mp4' : 'audio/wav';
+      return 'data:' + mime + ';base64,' + fs.readFileSync(p).toString('base64');
+    } catch (e) { /* 读不了就当没有 */ }
+  }
+  return null;
+}
+
+function voiceClips() {
+  if (voiceClipsCache !== null) return voiceClipsCache;
+  const drag = readVoiceClip('drag');
+  const farewell = readVoiceClip('farewell');
+  const click = [];
+  for (let i = 1; i <= 12; i++) {
+    const c = readVoiceClip('click-' + i);
+    if (c) click.push(c);
+  }
+  voiceClipsCache = (drag || farewell || click.length) ? { drag, click, farewell } : null;
+  if (voiceClipsCache) {
+    log('pet voice clips loaded:', 'drag=' + !!drag, 'click=' + click.length, 'farewell=' + !!farewell);
+  } else {
+    log('pet voice clips not found in', VOICE_DIR);
+  }
+  return voiceClipsCache;
+}
+
+/* ---------------- 桌宠告别（退出前） ---------------- */
+
+// 关窗口前让桌宠说句再见：气泡显示 + 放告别语音，等它念完再退。
 async function sayGoodbye(win) {
   const text = '主人，下次再见吧！';
   try {
     if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
       await win.webContents.executeJavaScript(
-        'window.__dshPetSay ? window.__dshPetSay(' + JSON.stringify(text) + ') : false', true);
+        'window.__dshPetFarewell ? window.__dshPetFarewell(' + JSON.stringify(text) + ') : false', true);
     }
   } catch (e) { /* 页面上没有桌宠就算了 */ }
-  await new Promise((r) => setTimeout(r, 1500));   // 让气泡停一下再消失
+  const clips = voiceClips();
+  const willSpeak = !!(clips && clips.farewell) && loadConfig().petVoice !== false;
+  await new Promise((r) => setTimeout(r, willSpeak ? 2400 : 1500));   // 有语音就等它念完
   log('pet farewell done, quitting');
 }
 
@@ -1287,6 +1334,31 @@ function buildMenu() {
     {
       label: '桌宠',
       submenu: [
+        {
+          label: '播放语音（真人录音）',
+          type: 'checkbox',
+          checked: loadConfig().petVoice !== false,
+          click: (item) => {
+            saveConfig({ petVoice: !!item.checked });
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.executeJavaScript(
+                "window.__dshPetMute ? window.__dshPetMute(" + (!item.checked) + ") : false", true)
+                .catch(() => {});
+            }
+            toastInfo(item.checked ? '桌宠会说话了' : '桌宠已静音（气泡照常显示）');
+          }
+        },
+        {
+          label: '试听一句',
+          click: () => {
+            if (!mainWindow || mainWindow.isDestroyed()) return;
+            mainWindow.webContents.executeJavaScript(
+              "window.__dshPet && window.__dshPet.play ? (window.__dshPet.play('click', 0), true) : false", true)
+              .then((ok) => toastInfo(ok ? '播放第一条语音' : '页面上没有桌宠或没有语音素材'))
+              .catch(() => {});
+          }
+        },
+        { type: 'separator' },
         {
           label: '回到默认位置',
           click: () => {

@@ -20,15 +20,21 @@ const TOPICS = ['electron', 'deepseek', 'deepseek-harness', 'desktop-app', 'q-ve
 const EXCLUDE_DIRS = new Set(['dist', 'dist-new', 'dist-old', 'dist-build', 'node_modules', '.preview', '.git', 'generated']);
 const EXCLUDE_FILES = new Set(['package-lock.json', 'pnpm-lock.yaml', 'probe.html', 'selftest.html', 'panel-preview.png']);
 
+// 真人录音只在本地，不进公开仓库（这是个人声音，公开不可逆）。
+// 程序运行时会读这个目录；仓库里没有它，桌宠只是不出声，功能不受影响。
+const EXCLUDE_PREFIXES = ['assets/voice/'];
+
 function walk(dir, base, out) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, e.name);
     const rel = base ? base + '/' + e.name : e.name;
     if (e.isDirectory()) {
       if (EXCLUDE_DIRS.has(e.name)) continue;
+      if (EXCLUDE_PREFIXES.some((p) => (rel + '/').startsWith(p))) continue;
       walk(full, rel, out);
     } else {
       if (EXCLUDE_FILES.has(e.name)) continue;
+      if (EXCLUDE_PREFIXES.some((p) => rel.startsWith(p))) continue;
       if (/\.(log|out|err)$/i.test(e.name)) continue;
       if (/^launch-server-/.test(e.name)) continue;
       out.push({ rel, full });
@@ -37,7 +43,12 @@ function walk(dir, base, out) {
   return out;
 }
 
-function api(method, apiPath, body) {
+// 带退避的请求：国内访问 api.github.com 会间歇性 TLS 断开/超时/400，
+// 而一次发布要发几十个请求（还有 200KB+ 的大文件），不重试基本推不完。
+const RETRY_MAX = 10;
+
+function api(method, apiPath, body, attempt) {
+  const n = attempt || 1;
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
     const req = https.request({
@@ -54,12 +65,23 @@ function api(method, apiPath, body) {
       let raw = '';
       res.on('data', (c) => { raw += c; });
       res.on('end', () => {
+        // 5xx / 429 是服务端抖动；400 "malformed request" 是网络把请求体弄坏了，也要重试
+        const transient = res.statusCode >= 500 || res.statusCode === 429 ||
+          (res.statusCode === 400 && /malformed request/i.test(raw));
+        if (transient) return retry(new Error('HTTP ' + res.statusCode));
         let parsed = null;
         try { parsed = raw ? JSON.parse(raw) : null; } catch (e) { parsed = raw; }
         resolve({ status: res.statusCode, body: parsed, headers: res.headers });
       });
     });
-    req.on('error', reject);
+    function retry(err) {
+      if (n >= RETRY_MAX) return reject(err);
+      const wait = Math.round(700 * Math.pow(1.8, n - 1) + Math.random() * 400);
+      process.stdout.write('~');   // 屏幕上打个点，表示在重试
+      setTimeout(() => api(method, apiPath, body, n + 1).then(resolve, reject), wait);
+    }
+    req.setTimeout(25000, () => req.destroy(new Error('timeout')));
+    req.on('error', retry);
     if (data) req.write(data);
     req.end();
   });
@@ -119,23 +141,53 @@ function api(method, apiPath, body) {
   console.log('· 待上传 ' + files.length + ' 个文件，共 ' +
     (files.reduce((s, f) => s + fs.statSync(f.full).size, 0) / 1024 / 1024).toFixed(2) + ' MB');
 
-  // 4) 逐个建 blob
+  // 4) 逐个建 blob（带断点续传：上传成功的 blob SHA 缓存到本地，
+  //    网络抖动导致中断时，重跑会跳过已成功的文件，进度能累积）
+  const cacheFile = path.join(ROOT, '.preview', 'publish-cache-' + NAME + '.json');
+  let cache = {};
+  try { cache = JSON.parse(fs.readFileSync(cacheFile, 'utf8')); } catch (e) { cache = {}; }
+  const saveCache = () => {
+    try {
+      fs.mkdirSync(path.dirname(cacheFile), { recursive: true });
+      fs.writeFileSync(cacheFile, JSON.stringify(cache), 'utf8');
+    } catch (e) { /* 缓存写不了就退化成每次全传 */ }
+  };
+
+  const crypto = require('crypto');
   const tree = [];
+  let reused = 0;
   for (const f of files) {
-    const content = fs.readFileSync(f.full).toString('base64');
-    const b = await api('POST', `/repos/${OWNER}/${NAME}/git/blobs`, { content, encoding: 'base64' });
+    const buf = fs.readFileSync(f.full);
+    const key = f.rel + ':' + crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16);
+    if (cache[key]) {
+      tree.push({ path: f.rel, mode: '100644', type: 'blob', sha: cache[key] });
+      reused++;
+      process.stdout.write('=');
+      continue;
+    }
+    const b = await api('POST', `/repos/${OWNER}/${NAME}/git/blobs`, { content: buf.toString('base64'), encoding: 'base64' });
     if (b.status !== 201) {
-      console.error('  上传失败 ' + f.rel + ' HTTP ' + b.status + ' ' + JSON.stringify(b.body).slice(0, 160));
+      saveCache();
+      console.error('\n  上传失败 ' + f.rel + ' HTTP ' + b.status + ' ' + JSON.stringify(b.body).slice(0, 160));
+      console.error('  （已成功的 ' + reused + '/' + files.length + ' 个记在缓存里，直接重跑本脚本即可续传）');
       process.exit(1);
     }
+    cache[key] = b.body.sha;
+    saveCache();
     tree.push({ path: f.rel, mode: '100644', type: 'blob', sha: b.body.sha });
     process.stdout.write('.');
   }
-  console.log(' 完成');
+  console.log(' 完成（本次新传 ' + (files.length - reused) + '，复用缓存 ' + reused + '）');
 
   // 5) tree → commit → ref
   const t = await api('POST', `/repos/${OWNER}/${NAME}/git/trees`, { tree });
-  if (t.status !== 201) { console.error('建 tree 失败: ' + JSON.stringify(t.body).slice(0, 300)); process.exit(1); }
+  if (t.status !== 201) {
+    // 缓存的 blob 可能已被 GitHub 回收（未引用会过期）——清掉缓存让下次全量重传
+    console.error('建 tree 失败: ' + JSON.stringify(t.body).slice(0, 300));
+    try { fs.unlinkSync(cacheFile); console.error('  已清掉 blob 缓存，请重跑（会全量重传）'); } catch (e) { /* 忽略 */ }
+    process.exit(1);
+  }
+  try { fs.unlinkSync(cacheFile); } catch (e) { /* 提交成功，缓存没用了 */ }
 
   const initialMessage = [
     'Initial commit: DSH Desktop v1.4.1',

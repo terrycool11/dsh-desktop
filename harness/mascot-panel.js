@@ -24,6 +24,15 @@
   try { parts = await window.dshSwitch.mascot(); } catch (e) { parts = null; }
   if (!parts || !parts.full) return 'no-mascot';
 
+  // 真人语音素材（assets\voice 里的 10 条台词）；没有就只是不出声
+  var clips = null;
+  try {
+    if (window.dshSwitch.voice) {
+      clips = await window.dshSwitch.voice();
+      if (clips && !(clips.click && clips.click.length)) clips = null;
+    }
+  } catch (e) { clips = null; }
+
   var wrap = document.createElement('div');
   wrap.id = ID;
   document.body.appendChild(wrap);
@@ -37,7 +46,9 @@
     brand: '',
     tip: '拖动我可以换位置',
     provider: function () { return window.dshSwitch.stats(); },
-    refreshMs: 30000
+    refreshMs: 30000,
+    clips: clips,                     // 拖动 / 点击 / 告别时播对应的人声
+    voice: true
   });
   window.__dshPet = pet;
 
@@ -49,6 +60,10 @@
   };
   window.__dshPetFarewell = function (text) {
     try { return pet.farewell(text); } catch (e) { return ''; }
+  };
+  // 主进程切换"播放语音"时调它
+  window.__dshPetMute = function (on) {
+    try { return pet.mute(!!on); } catch (e) { return false; }
   };
 
   // 点一下：让主进程立刻重新采样一次余额，再刷新气泡（比等轮询快）

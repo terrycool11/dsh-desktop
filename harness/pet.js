@@ -83,6 +83,14 @@
     clickResetMs: 10000,            // 点完之后多久恢复原本的气泡内容
     farewellText: '主人，下次再见吧！',  // 退出前说的话（宿主调 farewell()）
 
+    /* ---- 真人语音（可选）----
+       clips: { drag: 'URL', click: ['URL', ...], farewell: 'URL' }
+       库本身不带音频，宿主给什么播什么；没给就只显示文字、不出声。
+       click 数组按下标和 clickTexts 一一对应（第 3 句 → click[2]）。 */
+    clips: null,
+    voice: true,                    // 是否播放（可用 mute(true) 静音）
+    voiceVolume: 1,                 // 0 ~ 1
+
     provider: null,                 // async () => ({ ok, balance, currency, runSpent, daySpent })
     tokensSelector: '[data-composer-stats]',   // 从页面读取 token 用量的选择器
     labels: { balance: '余额', run: '本次消耗', tokens: 'Tokens' },
@@ -244,6 +252,7 @@
         dragging = true;
         setSay(o.dragText, 0);
         show();
+        playClip('drag');
       }
       applyPos(e.clientX - drag.dx, e.clientY - drag.dy);
     }
@@ -262,6 +271,7 @@
         var line = pickClickText();
         setSay(line, o.clickResetMs);
         show();
+        playClip('click', lastClickIndex);
         hop();
         refresh(false);
       }
@@ -304,11 +314,36 @@
     }
     function pickClickText() {
       var list = (o.clickTexts && o.clickTexts.length) ? o.clickTexts : DEFAULTS.clickTexts;
-      if (list.length === 1) return list[0];
+      if (list.length === 1) { lastClickIndex = 0; return list[0]; }
       var i = Math.floor(Math.random() * list.length);
       if (i === lastClickIndex) i = (i + 1) % list.length;   // 不连着说同一句
       lastClickIndex = i;
       return list[i];
+    }
+
+    /* ---------- 真人语音（可选：宿主给 clips 才播） ---------- */
+    var audio = null;
+
+    function playClip(kind, index) {
+      if (!o.voice || !o.clips) return;
+      var c = o.clips;
+      var url = (kind === 'click')
+        ? (c.click || [])[index]
+        : c[kind];
+      if (!url) return;
+      try {
+        if (audio) { audio.pause(); audio = null; }     // 上一句没播完就掐掉
+        audio = new Audio(url);
+        audio.volume = typeof o.voiceVolume === 'number' ? o.voiceVolume : 1;
+        var p = audio.play();
+        if (p && p.catch) p.catch(function () { /* 浏览器要求先有用户交互时会拒绝，忽略 */ });
+      } catch (e) { /* 放不出来也不影响气泡 */ }
+    }
+
+    function stopClip() {
+      if (!audio) return;
+      try { audio.pause(); } catch (e) { /* 忽略 */ }
+      audio = null;
     }
 
     function say(text, ms) {
@@ -383,18 +418,28 @@
       clearSay: clearSay,
       /** 只把台词显示进气泡（不改数据、不自动消失） */
       setLine: function (text, ms) { setSay(text, ms || 0); show(); return text; },
-      /** 退出前告别：气泡显示 farewellText（宿主调完停一下再退） */
+      /** 退出前告别：气泡显示 farewellText + 播告别语音（宿主调完停一下再退） */
       farewell: function (text) {
         var t = text || o.farewellText;
         setSay(t, 0);
         show();
+        playClip('farewell');
         return t;
       },
+      /** 之后挂上（或换掉）语音素材 */
+      setClips: function (clips) { o.clips = clips; return clips; },
+      /** 手动播一条语音：play('click', 0) / play('drag') / play('farewell') */
+      play: playClip,
+      /** 静音 / 恢复播放 */
+      mute: function (on) { o.voice = !on; if (on) stopClip(); return !o.voice; },
+      isMuted: function () { return !o.voice; },
+      stopClip: stopClip,
       stats: function () { return stats; },
       destroy: function () {
         destroyed = true;
         timers.forEach(function (t) { clearTimeout(t); clearInterval(t); });
         clearTimeout(overrideTimer);
+        stopClip();
         box.removeEventListener('mousedown', onDown);
         window.removeEventListener('mousemove', onMove);
         window.removeEventListener('mouseup', onUp);
@@ -406,5 +451,5 @@
     return api;
   }
 
-  return { create: create, DEFAULTS: DEFAULTS, version: '1.1.0' };
+  return { create: create, DEFAULTS: DEFAULTS, version: '1.2.0' };
 });

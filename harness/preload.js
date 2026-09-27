@@ -13,5 +13,7 @@ contextBridge.exposeInMainWorld('dshSwitch', {
   current: () => ipcRenderer.invoke('view:current'),
   stats: () => ipcRenderer.invoke('stats:get'),
   refreshStats: () => ipcRenderer.invoke('stats:refresh'),
-  mascot: () => ipcRenderer.invoke('mascot:data-url')
+  mascot: () => ipcRenderer.invoke('mascot:data-url'),
+  // 桌宠的真人语音素材（主进程把 assets\voice 里的音频读成 data URL）
+  voice: () => ipcRenderer.invoke('pet:voice')
 });

@@ -54,8 +54,12 @@ if (-not $token) { throw '凭据内容为空' }
 Write-Host "已从凭据管理器读取 token（长度 $($token.Length)，不显示内容）"
 
 $env:GH_PUBLISH_TOKEN = $token
+$code = 0
 try {
   & node (Join-Path $PSScriptRoot 'publish-github.js') $Repo
+  $code = $LASTEXITCODE
 } finally {
   Remove-Item Env:\GH_PUBLISH_TOKEN -ErrorAction SilentlyContinue
 }
+# 必须把 node 的退出码传出去，否则失败会被当成成功
+exit $code

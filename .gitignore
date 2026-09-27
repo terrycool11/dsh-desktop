@@ -17,6 +17,10 @@ assets/generated/
 assets/*-source.jpg
 assets/icon-source.jpg
 
+# 桌宠的真人语音素材：这是个人声音，只放本地、不进公开仓库。
+# 程序运行时照样读它；仓库里没有它时，桌宠只显示文字不出声，功能不受影响。
+assets/voice/
+
 # ---- 运行时 / 日志 ----
 *.log
 server-*.log
