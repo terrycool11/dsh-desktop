@@ -46,6 +46,9 @@ async function main() {
       /^\/dist-new($|\/)/,
       /^\/\.preview($|\/)/,
       /^\/tools($|\/)/,
+      // 说明文档与素材原图只给仓库看，运行时用不到（docs 是 README 截图，chibi-source 是抠图原图）
+      /^\/docs($|\/)/,
+      /^\/assets\/chibi-source\.(jpg|jpeg|png|webp)$/i,
       // 图标素材：运行时只需要 icon.ico / icon.png / icon-32.png
       /^\/assets\/generated($|\/)/,
       /^\/assets\/icon-source\.(jpg|jpeg|png|webp)$/i,

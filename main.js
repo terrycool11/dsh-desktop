@@ -971,13 +971,16 @@ function injectSwitchButton() {
   mainWindow.webContents.executeJavaScript(SWITCH_BUTTON_JS).catch(() => {});
 }
 
-// 左侧栏的 Q 版助手面板：形象 + 余额 / 消耗 / token
-// token 一栏直接读 DSH 自己渲染的用量 pill（[data-composer-stats]），
-// 那是 DSH 的 tokenMeter 投影算出来的，比我自己估准。
-// 左侧栏的 Q 版助手：完整角色（三层素材分层动画 + 可拖动 + 提醒气泡）
-// 脚本放在 harness/mascot-panel.js，避免在 main.js 里塞一大段注入代码。
+// 左侧栏的 Q 版助手：完整角色（漂浮/呼吸/摇摆动画 + 可拖动 + 提醒气泡）
+// 本体是独立维护的桌宠库（dsh-desktop-pet 项目），这里 vendored 成 harness/pet.js，
+// harness/mascot-panel.js 只是应用侧粘合（拿桥、取形象、建桌宠）。两个文件拼起来注入。
+function petLibSource() {
+  return fs.readFileSync(path.join(__dirname, 'harness', 'pet.js'), 'utf8');
+}
+
 function mascotPanelScript() {
-  return fs.readFileSync(path.join(__dirname, 'harness', 'mascot-panel.js'), 'utf8');
+  return petLibSource() + '\n;\n' +
+    fs.readFileSync(path.join(__dirname, 'harness', 'mascot-panel.js'), 'utf8');
 }
 
 function injectMascotPanel() {
@@ -1473,16 +1476,19 @@ async function runSelfTest() {
       report.switchTest.buttonInjected = await mainWindow.webContents.executeJavaScript(
         "!!document.getElementById('dsh-switch-to-platform')");
 
-      // 1b) Q 版助手侧栏面板（hover 出气泡便于截图）
+      // 1b) Q 版助手（hover 出气泡便于截图）
       await sleep(1500);
       report.switchTest.mascotPanel = await mainWindow.webContents.executeJavaScript(`(function () {
-        var p = document.getElementById('dsh-mascot-panel');
+        var p = document.querySelector('.dsh-pet');
         if (!p) return { present: false };
         p.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-        var img = p.querySelector('img.upper') || p.querySelector('img');
+        var img = p.querySelector('.dsh-pet__img');
+        var bubble = p.querySelector('.dsh-pet__bubble');
         return {
           present: true,
+          rooted: !!document.getElementById('dsh-pet-root'),
           text: (p.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 140),
+          bubbleOpen: !!(bubble && bubble.classList.contains('show')),
           imageLoaded: !!(img && img.naturalWidth > 0),
           layers: p.querySelectorAll('img').length
         };

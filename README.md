@@ -107,8 +107,13 @@ tools/make-chibi-full.ps1
 | 影子 | `dshShadow` 随浮动缩小、变淡 |
 | 点击 | `dshHop` 跳一下 |
 
-注入代码在 `harness/mascot-panel.js`（独立文件，便于修改）。
-**换形象只需替换 `assets/chibi-full.png`**，代码不用动。
+桌宠本体是一个**独立维护的零依赖库**：`harness/pet.js`（来自
+[dsh-desktop-pet](https://github.com/terrycool11/dsh-desktop-pet) 项目，同一个文件也能用在
+普通网页 / 油猴脚本 / 别的 Electron 应用里）。`harness/mascot-panel.js` 只是**应用侧粘合**：
+通过 preload 桥拿到形象和用量、调 `DshPet.create()` 把桌宠挂上去。
+
+**换形象只需替换 `assets/chibi-full.png`**，代码不用动；要改尺寸、动画、气泡文案或数据源，
+改 `pet.js` 的配置项（见那个仓库的 README）。
 
 > 早先用"抠图 + 补画下半身"拼过一版，效果不好已删除；`tools/cutout.ps1`、
 > `tools/make-chibi.ps1`、`tools/make-mascot.ps1` 保留作参考。
@@ -196,7 +201,8 @@ dsh-desktop/
 │  └─ icon-source.jpg       图标原图
 ├─ harness/                 Harness 窗口相关
 │  ├─ preload.js            只向页面暴露 view:switch / stats / mascot 通道
-│  └─ mascot-panel.js       注入 DSH 页面的 Q 版助手（动画 + 拖动 + 气泡）
+│  ├─ pet.js                桌宠本体（独立库，与 dsh-desktop-pet 仓库同步）
+│  └─ mascot-panel.js       应用侧粘合：拿形象 + 用量，建桌宠
 ├─ launcher/                启动页（选择 Harness / 开放平台）
 │  ├─ launcher.html / .css / .js
 │  └─ preload.js
@@ -349,3 +355,10 @@ powershell -ExecutionPolicy Bypass -File tools/start-web.ps1
   下次启动只要该进程还活着就直接复用。文件里带 token，注意不要外传。
 - 开放平台面板的对话测试是**直接调用你自己的 API 密钥**，会按官方价格计费；
   它只是一个调试窗口，和 DSH 会话本身无关。
+
+## 相关项目
+
+- **[dsh-desktop-pet](https://github.com/terrycool11/dsh-desktop-pet)** —— 桌宠本体被抽出来单独开源了：
+  一个 13 KB 的零依赖 JS 库，能用在普通网页（`<script>` 引一行）、油猴脚本、任意 Electron 应用里。
+  有在线 Demo：<https://terrycool11.github.io/dsh-desktop-pet/demo/>
+  本仓库的 `harness/pet.js` 就是它的副本，改桌宠请去那边改，再同步回来。

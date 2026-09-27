@@ -66,6 +66,14 @@ function api(method, apiPath, body) {
 }
 
 (async () => {
+  // --dry：只列出会上传哪些文件，不碰网络
+  if (process.argv.includes('--dry')) {
+    const files = walk(ROOT, '', []);
+    const total = files.reduce((s, f) => s + fs.statSync(f.full).size, 0);
+    console.log('待上传 ' + files.length + ' 个文件，共 ' + (total / 1024 / 1024).toFixed(2) + ' MB：');
+    files.forEach((f) => console.log('  ' + String(Math.round(fs.statSync(f.full).size / 1024)).padStart(7) + ' KB  ' + f.rel));
+    return;
+  }
   if (!TOKEN) { console.error('缺少 GH_PUBLISH_TOKEN'); process.exit(1); }
 
   // 1) 建仓库（已存在则复用）
@@ -129,7 +137,7 @@ function api(method, apiPath, body) {
   const t = await api('POST', `/repos/${OWNER}/${NAME}/git/trees`, { tree });
   if (t.status !== 201) { console.error('建 tree 失败: ' + JSON.stringify(t.body).slice(0, 300)); process.exit(1); }
 
-  const commitMessage = [
+  const initialMessage = [
     'Initial commit: DSH Desktop v1.4.1',
     '',
     '把 DeepSeek Harness 的 dsh web 界面封装成独立桌面应用：',
@@ -139,6 +147,7 @@ function api(method, apiPath, body) {
     '- 视图互切：Harness ⇄ 开放平台（按钮 / 菜单 / Ctrl+Shift+P）',
     '- 后台服务用 WMI + wscript 拉起，独立于应用进程树，重启应用不断会话、不弹黑窗'
   ].join('\n');
+  const commitMessage = parentSha ? (process.env.PUBLISH_MSG || 'chore: 同步仓库内容') : initialMessage;
 
   const c = await api('POST', `/repos/${OWNER}/${NAME}/git/commits`, {
     message: commitMessage, tree: t.body.sha, parents: parentSha ? [parentSha] : []
